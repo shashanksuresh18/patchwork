@@ -62,8 +62,9 @@ Generated patch:
             try:
                 raw_text = run_agent_cli(
                     self._cli_command,
-                    f"{REVIEWER_SYSTEM_PROMPT}\n\n{user_message}",
+                    user_message,
                     self._cli_timeout,
+                    system_prompt=REVIEWER_SYSTEM_PROMPT,
                 )
             except AgentCliError as e:
                 return ReviewResult(

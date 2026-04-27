@@ -135,12 +135,16 @@ Output format (exactly):
 ]
 """
     user_message = f"Feature: {feature}"
+    referenced_context = _get_referenced_file_context(feature)
+    if referenced_context:
+        user_message = f"{user_message}\n\nReferenced local files:\n{referenced_context}"
     if settings.use_cli_backends:
         try:
             raw = run_agent_cli(
                 settings.claude_cli_command,
-                f"{planner_system}\n\n{user_message}",
+                user_message,
                 settings.agent_cli_timeout,
+                system_prompt=planner_system,
             )
         except AgentCliError as e:
             console.print(f"[red]Planner CLI error: {e}[/red]")
@@ -314,6 +318,21 @@ def _get_repo_context() -> str:
 """
     except Exception:
         return ""
+
+
+def _get_referenced_file_context(text: str) -> str:
+    paths = re.findall(r"[\w./\\-]+\.(?:md|txt)", text, flags=re.IGNORECASE)
+    chunks = []
+    for raw_path in paths[:5]:
+        path = Path(raw_path)
+        if not path.exists() or not path.is_file():
+            continue
+        try:
+            content = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            content = path.read_text(encoding="utf-8", errors="replace")
+        chunks.append(f"--- {path} ---\n{content[:12000]}")
+    return "\n\n".join(chunks)
 
 
 def _is_git_repo() -> bool:

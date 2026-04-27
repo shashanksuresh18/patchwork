@@ -2,7 +2,7 @@ from pathlib import Path
 
 from typer.testing import CliRunner
 
-from patchwork.cli import app
+from patchwork.cli import _get_referenced_file_context, app
 from patchwork.config import get_settings
 
 
@@ -52,3 +52,32 @@ def test_doctor_fails_when_cli_tool_is_missing(monkeypatch):
 
     assert result.exit_code == 1
     assert "gemini" in result.output
+
+
+def test_referenced_file_context_includes_markdown_file():
+    with runner.isolated_filesystem():
+        Path("PROMPT1.md").write_text("Build the app\n", encoding="utf-8")
+
+        context = _get_referenced_file_context("Read PROMPT1.md and plan it")
+
+        assert "--- PROMPT1.md ---" in context
+        assert "Build the app" in context
+
+
+def test_plan_passes_system_prompt_separately(monkeypatch):
+    get_settings.cache_clear()
+    captured = {}
+
+    def fake_run_agent_cli(command, prompt, timeout, system_prompt=None):
+        captured["prompt"] = prompt
+        captured["system_prompt"] = system_prompt
+        return '[{"id": "x", "description": "One"}, {"id": "y", "description": "Two"}, {"id": "z", "description": "Three"}]'
+
+    monkeypatch.setattr("patchwork.cli.run_agent_cli", fake_run_agent_cli)
+
+    with runner.isolated_filesystem():
+        result = runner.invoke(app, ["plan", "Build the thing"])
+
+        assert result.exit_code == 0
+        assert captured["prompt"] == "Feature: Build the thing"
+        assert "decompose a feature request" in captured["system_prompt"]

@@ -10,7 +10,12 @@ class AgentCliError(Exception):
     pass
 
 
-def run_agent_cli(command: str, prompt: str, timeout: int) -> str:
+def run_agent_cli(
+    command: str,
+    prompt: str,
+    timeout: int,
+    system_prompt: str | None = None,
+) -> str:
     """Run a local agent CLI command with the prompt as the final argument."""
     if not command.strip():
         raise AgentCliError("agent CLI command is empty")
@@ -18,6 +23,8 @@ def run_agent_cli(command: str, prompt: str, timeout: int) -> str:
     args = shlex.split(command)
     if args:
         args[0] = resolve_agent_executable(args[0])
+    if system_prompt and args and Path(args[0]).name.lower() in {"claude", "claude.cmd", "claude.exe"}:
+        args.extend(["--system-prompt", system_prompt])
     try:
         result = subprocess.run(
             [*args, prompt],
