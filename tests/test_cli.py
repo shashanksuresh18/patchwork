@@ -68,9 +68,10 @@ def test_plan_puts_feature_first_for_cli(monkeypatch):
     get_settings.cache_clear()
     captured = {}
 
-    def fake_run_agent_cli(command, prompt, timeout, system_prompt=None):
+    def fake_run_agent_cli(command, prompt, timeout, system_prompt=None, prompt_via_stdin=True):
         captured["prompt"] = prompt
         captured["system_prompt"] = system_prompt
+        captured["prompt_via_stdin"] = prompt_via_stdin
         return '[{"id": "x", "description": "One"}, {"id": "y", "description": "Two"}, {"id": "z", "description": "Three"}]'
 
     monkeypatch.setattr("patchwork.cli.run_agent_cli", fake_run_agent_cli)
@@ -83,3 +84,22 @@ def test_plan_puts_feature_first_for_cli(monkeypatch):
         assert "Feature: Build the thing" in captured["prompt"]
         assert "decompose a feature request" in captured["prompt"]
         assert captured["system_prompt"] is None
+        assert captured["prompt_via_stdin"] is True
+
+
+def test_plan_writes_debug_prompt_when_enabled(monkeypatch):
+    get_settings.cache_clear()
+
+    def fake_run_agent_cli(command, prompt, timeout, system_prompt=None, prompt_via_stdin=True):
+        return '[{"id": "x", "description": "One"}, {"id": "y", "description": "Two"}, {"id": "z", "description": "Three"}]'
+
+    monkeypatch.setattr("patchwork.cli.run_agent_cli", fake_run_agent_cli)
+
+    with runner.isolated_filesystem():
+        Path(".env").write_text("PATCHWORK_DEBUG_PROMPT=true\n", encoding="utf-8")
+        result = runner.invoke(app, ["plan", "Build the thing"])
+
+        assert result.exit_code == 0
+        debug_path = Path(".patchwork/debug-last-prompt.txt")
+        assert debug_path.exists()
+        assert "Feature: Build the thing" in debug_path.read_text(encoding="utf-8")

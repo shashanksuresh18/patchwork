@@ -15,6 +15,7 @@ def run_agent_cli(
     prompt: str,
     timeout: int,
     system_prompt: str | None = None,
+    prompt_via_stdin: bool = True,
 ) -> str:
     """Run a local agent CLI command with the prompt as the final argument."""
     if not command.strip():
@@ -27,7 +28,8 @@ def run_agent_cli(
         args.extend(["--system-prompt", system_prompt])
     try:
         result = subprocess.run(
-            [*args, prompt],
+            args if prompt_via_stdin else [*args, prompt],
+            input=prompt if prompt_via_stdin else None,
             capture_output=True,
             text=True,
             timeout=timeout,

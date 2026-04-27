@@ -33,6 +33,7 @@ PATCHWORK_CLAUDE_CLI_COMMAND=claude -p
 PATCHWORK_CODEX_CLI_COMMAND=codex exec
 PATCHWORK_GEMINI_CLI_COMMAND=gemini -p
 PATCHWORK_AGENT_CLI_TIMEOUT=7200
+PATCHWORK_DEBUG_PROMPT=false
 
 # Optional API mode:
 # PATCHWORK_USE_CLI_BACKENDS=false
@@ -146,6 +147,11 @@ Output format (exactly):
 Instructions:
 {planner_system}
 """
+        if settings.debug_prompt:
+            debug_path = Path(".patchwork/debug-last-prompt.txt")
+            debug_path.parent.mkdir(parents=True, exist_ok=True)
+            debug_path.write_text(cli_prompt, encoding="utf-8")
+            console.print(f"[yellow]Debug prompt saved:[/yellow] {debug_path}")
         try:
             raw = run_agent_cli(
                 settings.claude_cli_command,

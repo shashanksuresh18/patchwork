@@ -77,6 +77,10 @@ class Settings(BaseSettings):
         default=7200,
         validation_alias=AliasChoices("PATCHWORK_AGENT_CLI_TIMEOUT", "agent_cli_timeout"),
     )
+    debug_prompt: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("PATCHWORK_DEBUG_PROMPT", "debug_prompt"),
+    )
 
 
 @lru_cache
