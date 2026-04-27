@@ -139,12 +139,18 @@ Output format (exactly):
     if referenced_context:
         user_message = f"{user_message}\n\nReferenced local files:\n{referenced_context}"
     if settings.use_cli_backends:
+        cli_prompt = f"""Decompose this exact feature request into implementation tasks.
+
+{user_message}
+
+Instructions:
+{planner_system}
+"""
         try:
             raw = run_agent_cli(
                 settings.claude_cli_command,
-                user_message,
+                cli_prompt,
                 settings.agent_cli_timeout,
-                system_prompt=planner_system,
             )
         except AgentCliError as e:
             console.print(f"[red]Planner CLI error: {e}[/red]")

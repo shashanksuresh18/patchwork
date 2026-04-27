@@ -64,7 +64,7 @@ def test_referenced_file_context_includes_markdown_file():
         assert "Build the app" in context
 
 
-def test_plan_passes_system_prompt_separately(monkeypatch):
+def test_plan_puts_feature_first_for_cli(monkeypatch):
     get_settings.cache_clear()
     captured = {}
 
@@ -79,5 +79,7 @@ def test_plan_passes_system_prompt_separately(monkeypatch):
         result = runner.invoke(app, ["plan", "Build the thing"])
 
         assert result.exit_code == 0
-        assert captured["prompt"] == "Feature: Build the thing"
-        assert "decompose a feature request" in captured["system_prompt"]
+        assert captured["prompt"].startswith("Decompose this exact feature request")
+        assert "Feature: Build the thing" in captured["prompt"]
+        assert "decompose a feature request" in captured["prompt"]
+        assert captured["system_prompt"] is None
