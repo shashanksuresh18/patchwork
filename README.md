@@ -13,6 +13,12 @@ uv pip install -e .
 cp .env.example .env
 # Default mode uses local CLIs, so log in to Claude Code, Codex, and Gemini first.
 
+# Initialize Patchwork in a project
+patchwork init
+
+# Check local tools and git setup
+patchwork doctor
+
 # Plan a feature
 patchwork plan "add a /health endpoint to the FastAPI app"
 
@@ -53,6 +59,38 @@ PATCHWORK_GEMINI_CLI_COMMAND=gemini -p
 
 If your local command syntax is different, change the matching `PATCHWORK_*_CLI_COMMAND`
 value in `.env`.
+
+## Project setup
+
+Run this once inside each codebase you want Patchwork to work on:
+
+```bash
+patchwork init
+```
+
+It creates:
+
+```text
+.env
+.patchwork/
+.patchwork/plans/
+.patchwork/config.toml
+```
+
+Existing `.env` and `.patchwork/config.toml` files are preserved. To recreate them:
+
+```bash
+patchwork init --force
+```
+
+Check whether the current project is ready:
+
+```bash
+patchwork doctor
+```
+
+`doctor` checks for `git`, whether you are inside a Git repo, and either local agent CLIs
+or API keys depending on `PATCHWORK_USE_CLI_BACKENDS`.
 
 To use SDK/API keys instead, set:
 

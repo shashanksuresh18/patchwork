@@ -1,5 +1,6 @@
 import json
 import re
+import shutil
 import subprocess
 from datetime import datetime, timezone
 from pathlib import Path
@@ -10,7 +11,7 @@ from anthropic import Anthropic, APIError
 from rich.console import Console
 from rich.table import Table
 
-from patchwork.agent_cli import AgentCliError, run_agent_cli
+from patchwork.agent_cli import AgentCliError, find_agent_command, run_agent_cli
 from patchwork.backends import REGISTRY
 from patchwork.backends.base import BackendError
 from patchwork.config import get_settings
@@ -24,6 +25,90 @@ from patchwork.router import route_task
 app = typer.Typer(name="patchwork", add_completion=False)
 console = Console()
 error_console = Console(stderr=True)
+
+
+DEFAULT_ENV = """# Patchwork local CLI mode
+PATCHWORK_USE_CLI_BACKENDS=true
+PATCHWORK_CLAUDE_CLI_COMMAND=claude -p
+PATCHWORK_CODEX_CLI_COMMAND=codex exec
+PATCHWORK_GEMINI_CLI_COMMAND=gemini -p
+PATCHWORK_AGENT_CLI_TIMEOUT=7200
+
+# Optional API mode:
+# PATCHWORK_USE_CLI_BACKENDS=false
+# ANTHROPIC_API_KEY=
+# OPENAI_API_KEY=
+# GOOGLE_API_KEY=
+"""
+
+
+DEFAULT_CONFIG = """# Patchwork project config
+# Runtime settings are currently read from .env.
+"""
+
+
+@app.command()
+def init(
+    force: Annotated[
+        bool,
+        typer.Option("--force", help="Overwrite existing Patchwork config files"),
+    ] = False,
+) -> None:
+    """Create Patchwork config files in the current project."""
+    plan_dir = Path(".patchwork/plans")
+    plan_dir.mkdir(parents=True, exist_ok=True)
+
+    results = [
+        _write_text_if_missing(Path(".env"), DEFAULT_ENV, force),
+        _write_text_if_missing(Path(".patchwork/config.toml"), DEFAULT_CONFIG, force),
+    ]
+
+    table = Table(title="Patchwork Init")
+    table.add_column("Path", style="bold")
+    table.add_column("Status")
+    table.add_row(str(plan_dir), "[green]ready[/green]")
+    for path, wrote in results:
+        table.add_row(str(path), "[green]created[/green]" if wrote else "[yellow]exists[/yellow]")
+    console.print(table)
+
+
+@app.command()
+def doctor() -> None:
+    """Check local Patchwork prerequisites."""
+    settings = get_settings()
+    checks: list[tuple[str, bool, str]] = []
+
+    git_path = shutil.which("git")
+    checks.append(("git", git_path is not None, git_path or "not found on PATH"))
+    checks.append(("git repo", _is_git_repo(), "inside a git repo" if _is_git_repo() else "not inside a git repo"))
+
+    if settings.use_cli_backends:
+        for name, command in (
+            ("claude", settings.claude_cli_command),
+            ("codex", settings.codex_cli_command),
+            ("gemini", settings.gemini_cli_command),
+        ):
+            found = find_agent_command(command)
+            checks.append((name, found is not None, found or f"not found for command: {command}"))
+    else:
+        checks.extend(
+            [
+                ("ANTHROPIC_API_KEY", bool(settings.anthropic_api_key), "set" if settings.anthropic_api_key else "missing"),
+                ("OPENAI_API_KEY", bool(settings.openai_api_key), "set" if settings.openai_api_key else "missing"),
+                ("GOOGLE_API_KEY", bool(settings.google_api_key), "set" if settings.google_api_key else "missing"),
+            ]
+        )
+
+    table = Table(title="Patchwork Doctor")
+    table.add_column("Check", style="bold")
+    table.add_column("Status")
+    table.add_column("Detail")
+    for name, ok, detail in checks:
+        table.add_row(name, "[green]OK[/green]" if ok else "[red]FAIL[/red]", detail)
+    console.print(table)
+
+    if any(not ok for _, ok, _ in checks):
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -229,6 +314,26 @@ def _get_repo_context() -> str:
 """
     except Exception:
         return ""
+
+
+def _is_git_repo() -> bool:
+    try:
+        result = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            capture_output=True,
+            text=True,
+        )
+    except Exception:
+        return False
+    return result.returncode == 0 and result.stdout.strip() == "true"
+
+
+def _write_text_if_missing(path: Path, content: str, force: bool) -> tuple[Path, bool]:
+    if path.exists() and not force:
+        return path, False
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(content, encoding="utf-8")
+    return path, True
 
 
 def _print_summary(plan_obj: Plan) -> None:

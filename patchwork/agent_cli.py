@@ -16,10 +16,8 @@ def run_agent_cli(command: str, prompt: str, timeout: int) -> str:
         raise AgentCliError("agent CLI command is empty")
 
     args = shlex.split(command)
-    if os.name == "nt" and args and not Path(args[0]).suffix:
-        cmd_shim = shutil.which(f"{args[0]}.cmd")
-        if cmd_shim:
-            args[0] = cmd_shim
+    if args:
+        args[0] = resolve_agent_executable(args[0])
     try:
         result = subprocess.run(
             [*args, prompt],
@@ -43,3 +41,23 @@ def run_agent_cli(command: str, prompt: str, timeout: int) -> str:
     if not output:
         raise AgentCliError("agent CLI returned no output")
     return output
+
+
+def resolve_agent_executable(executable: str) -> str:
+    """Resolve an agent executable, preferring .cmd shims on Windows."""
+    if os.name == "nt" and not Path(executable).suffix:
+        cmd_shim = shutil.which(f"{executable}.cmd")
+        if cmd_shim:
+            return cmd_shim
+    return executable
+
+
+def find_agent_command(command: str) -> str | None:
+    """Return the resolved executable path for a command string, or None."""
+    if not command.strip():
+        return None
+    args = shlex.split(command)
+    if not args:
+        return None
+    executable = resolve_agent_executable(args[0])
+    return shutil.which(executable) or None
