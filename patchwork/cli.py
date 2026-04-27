@@ -10,6 +10,7 @@ from anthropic import Anthropic, APIError
 from rich.console import Console
 from rich.table import Table
 
+from patchwork.agent_cli import AgentCliError, run_agent_cli
 from patchwork.backends import REGISTRY
 from patchwork.backends.base import BackendError
 from patchwork.config import get_settings
@@ -28,10 +29,9 @@ error_console = Console(stderr=True)
 @app.command()
 def plan(feature: Annotated[str, typer.Argument(help="Feature description")]) -> None:
     settings = get_settings()
-    if not settings.anthropic_api_key:
+    if not settings.use_cli_backends and not settings.anthropic_api_key:
         error_console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
         raise typer.Exit(1)
-    client = Anthropic(api_key=settings.anthropic_api_key)
     planner_system = """\
 You are a software architect. Your job is to decompose a feature request into a list of 3 to 7 discrete, atomic coding tasks.
 
@@ -50,17 +50,29 @@ Output format (exactly):
 ]
 """
     user_message = f"Feature: {feature}"
-    try:
-        response = client.messages.create(
-            model=settings.claude_model,
-            max_tokens=2048,
-            system=planner_system,
-            messages=[{"role": "user", "content": user_message}],
-        )
-    except APIError as e:
-        console.print(f"[red]Planner API error: {e}[/red]")
-        raise typer.Exit(1) from e
-    raw = response.content[0].text
+    if settings.use_cli_backends:
+        try:
+            raw = run_agent_cli(
+                settings.claude_cli_command,
+                f"{planner_system}\n\n{user_message}",
+                settings.agent_cli_timeout,
+            )
+        except AgentCliError as e:
+            console.print(f"[red]Planner CLI error: {e}[/red]")
+            raise typer.Exit(1) from e
+    else:
+        client = Anthropic(api_key=settings.anthropic_api_key)
+        try:
+            response = client.messages.create(
+                model=settings.claude_model,
+                max_tokens=2048,
+                system=planner_system,
+                messages=[{"role": "user", "content": user_message}],
+            )
+        except APIError as e:
+            console.print(f"[red]Planner API error: {e}[/red]")
+            raise typer.Exit(1) from e
+        raw = response.content[0].text
     match = re.search(r"\[.*\]", raw, re.DOTALL)
     if not match:
         console.print(f"[red]Failed to parse plan. Raw response:\n{raw}[/red]")
@@ -109,10 +121,16 @@ def exec_plan(plan_file: Annotated[Path, typer.Argument(help="Path to plan JSON"
         raise typer.Exit(1)
     plan_obj = Plan.model_validate_json(plan_file.read_text(encoding="utf-8"))
     settings = get_settings()
-    if not settings.anthropic_api_key:
+    if not settings.use_cli_backends and not settings.anthropic_api_key:
         error_console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
         raise typer.Exit(1)
-    reviewer = PatchReviewer(api_key=settings.anthropic_api_key, model=settings.claude_model)
+    reviewer = PatchReviewer(
+        api_key=settings.anthropic_api_key,
+        model=settings.claude_model,
+        use_cli=settings.use_cli_backends,
+        cli_command=settings.claude_cli_command,
+        cli_timeout=settings.agent_cli_timeout,
+    )
     repo_context = _get_repo_context()
 
     for task in plan_obj.tasks:
@@ -129,14 +147,26 @@ def exec_plan(plan_file: Annotated[Path, typer.Argument(help="Path to plan JSON"
             "codex": settings.openai_model,
             "gemini": settings.gemini_model,
         }
+        cli_command_map = {
+            "claude": settings.claude_cli_command,
+            "codex": settings.codex_cli_command,
+            "gemini": settings.gemini_cli_command,
+        }
         api_key = key_map.get(task.backend)
         model = model_map.get(task.backend, "")
-        if not api_key:
+        cli_command = cli_command_map.get(task.backend, "")
+        if not settings.use_cli_backends and not api_key:
             task.status = TaskStatus.failed
             task.rejection_reason = f"API key not set for {task.backend}"
             continue
         backend_cls = REGISTRY[task.backend]
-        backend = backend_cls(api_key=api_key, model=model)
+        backend = backend_cls(
+            api_key=api_key,
+            model=model,
+            use_cli=settings.use_cli_backends,
+            cli_command=cli_command,
+            cli_timeout=settings.agent_cli_timeout,
+        )
         task.status = TaskStatus.running
         try:
             generated_patch = backend.generate_patch(task, repo_context)

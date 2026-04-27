@@ -2,6 +2,7 @@ import re
 
 from anthropic import Anthropic, APIError
 
+from patchwork.agent_cli import AgentCliError, run_agent_cli
 from patchwork.models import Task, Patch, ReviewResult, ReviewDecision
 from patchwork.tracing import traced
 
@@ -31,11 +32,24 @@ REASONING: <one to three sentences explaining specifically what is wrong and mus
 
 
 class PatchReviewer:
-    def __init__(self, api_key: str, model: str = "claude-sonnet-4-6") -> None:
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "claude-sonnet-4-6",
+        use_cli: bool = True,
+        cli_command: str = "claude -p",
+        cli_timeout: int = 7200,
+    ) -> None:
+        self._use_cli = use_cli
+        self._cli_command = cli_command
+        self._cli_timeout = cli_timeout
+        self._model = model
+        self._client = None
+        if self._use_cli:
+            return
         if not api_key:
             raise ValueError("ANTHROPIC_API_KEY is required for PatchReviewer")
         self._client = Anthropic(api_key=api_key)
-        self._model = model
 
     @traced
     def review(self, patch: Patch, task: Task) -> ReviewResult:
@@ -44,21 +58,35 @@ class PatchReviewer:
 Generated patch:
 {patch.content}
 """
-        try:
-            response = self._client.messages.create(
-                model=self._model,
-                max_tokens=1024,
-                system=REVIEWER_SYSTEM_PROMPT,
-                messages=[{"role": "user", "content": user_message}],
-            )
-        except APIError as e:
-            return ReviewResult(
-                task_id=patch.task_id,
-                decision=ReviewDecision.reject,
-                reasoning=f"Reviewer API error: {e}",
-            )
+        if self._use_cli:
+            try:
+                raw_text = run_agent_cli(
+                    self._cli_command,
+                    f"{REVIEWER_SYSTEM_PROMPT}\n\n{user_message}",
+                    self._cli_timeout,
+                )
+            except AgentCliError as e:
+                return ReviewResult(
+                    task_id=patch.task_id,
+                    decision=ReviewDecision.reject,
+                    reasoning=f"Reviewer CLI error: {e}",
+                )
+        else:
+            try:
+                response = self._client.messages.create(
+                    model=self._model,
+                    max_tokens=1024,
+                    system=REVIEWER_SYSTEM_PROMPT,
+                    messages=[{"role": "user", "content": user_message}],
+                )
+            except APIError as e:
+                return ReviewResult(
+                    task_id=patch.task_id,
+                    decision=ReviewDecision.reject,
+                    reasoning=f"Reviewer API error: {e}",
+                )
+            raw_text = response.content[0].text
 
-        raw_text = response.content[0].text
         return self._parse_response(raw_text, patch.task_id)
 
     def _parse_response(self, raw: str, task_id: str) -> ReviewResult:

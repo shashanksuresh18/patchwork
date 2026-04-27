@@ -11,7 +11,7 @@ uv pip install -e .
 
 # Copy env template
 cp .env.example .env
-# Edit .env with your API keys
+# Default mode uses local CLIs, so log in to Claude Code, Codex, and Gemini first.
 
 # Plan a feature
 patchwork plan "add a /health endpoint to the FastAPI app"
@@ -29,6 +29,40 @@ patchwork exec .patchwork/plans/add-a-health-endpoint-20250101-120000.json
 5. **Apply**: Approved patches are validated with `git apply --check` then applied.
 6. **Observe**: Every model call is traced in Langfuse (optional).
 
+## Local CLI mode
+
+Patchwork defaults to local agent CLI mode so you can use existing Claude Code, Codex,
+and Gemini subscriptions instead of paying separately for API keys.
+
+Install and log in to the tools you want Patchwork to use:
+
+```bash
+claude
+codex
+gemini
+```
+
+Patchwork calls them through these defaults:
+
+```env
+PATCHWORK_USE_CLI_BACKENDS=true
+PATCHWORK_CLAUDE_CLI_COMMAND=claude -p
+PATCHWORK_CODEX_CLI_COMMAND=codex exec
+PATCHWORK_GEMINI_CLI_COMMAND=gemini -p
+```
+
+If your local command syntax is different, change the matching `PATCHWORK_*_CLI_COMMAND`
+value in `.env`.
+
+To use SDK/API keys instead, set:
+
+```env
+PATCHWORK_USE_CLI_BACKENDS=false
+ANTHROPIC_API_KEY=...
+OPENAI_API_KEY=...
+GOOGLE_API_KEY=...
+```
+
 ## Routing rules
 
 | Keywords | Backend |
@@ -41,7 +75,8 @@ patchwork exec .patchwork/plans/add-a-health-endpoint-20250101-120000.json
 
 - Python 3.11+
 - `git` on PATH
-- API keys for the backends you want to use
+- Claude Code, Codex, and Gemini CLIs for default local CLI mode
+- API keys only if `PATCHWORK_USE_CLI_BACKENDS=false`
 
 ## Project structure
 
@@ -49,6 +84,7 @@ patchwork exec .patchwork/plans/add-a-health-endpoint-20250101-120000.json
 patchwork/
   cli.py           # typer CLI: plan, exec
   config.py        # pydantic-settings config
+  agent_cli.py     # local Claude/Codex/Gemini CLI runner
   models.py        # Task, Patch, Plan, ReviewResult
   router.py        # keyword-based backend routing
   reviewer.py      # Claude patch reviewer

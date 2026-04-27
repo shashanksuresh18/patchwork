@@ -57,6 +57,26 @@ class Settings(BaseSettings):
         default="claude",
         validation_alias=AliasChoices("PATCHWORK_DEFAULT_BACKEND", "default_backend"),
     )
+    use_cli_backends: bool = Field(
+        default=True,
+        validation_alias=AliasChoices("PATCHWORK_USE_CLI_BACKENDS", "use_cli_backends"),
+    )
+    claude_cli_command: str = Field(
+        default="claude -p",
+        validation_alias=AliasChoices("PATCHWORK_CLAUDE_CLI_COMMAND", "claude_cli_command"),
+    )
+    codex_cli_command: str = Field(
+        default="codex exec",
+        validation_alias=AliasChoices("PATCHWORK_CODEX_CLI_COMMAND", "codex_cli_command"),
+    )
+    gemini_cli_command: str = Field(
+        default="gemini -p",
+        validation_alias=AliasChoices("PATCHWORK_GEMINI_CLI_COMMAND", "gemini_cli_command"),
+    )
+    agent_cli_timeout: int = Field(
+        default=7200,
+        validation_alias=AliasChoices("PATCHWORK_AGENT_CLI_TIMEOUT", "agent_cli_timeout"),
+    )
 
 
 @lru_cache
