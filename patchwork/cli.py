@@ -34,6 +34,8 @@ PATCHWORK_CODEX_CLI_COMMAND=codex exec
 PATCHWORK_GEMINI_CLI_COMMAND=gemini -p
 PATCHWORK_AGENT_CLI_TIMEOUT=7200
 PATCHWORK_DEBUG_PROMPT=false
+PATCHWORK_CAVEMAN_MODE=false
+PATCHWORK_USE_GRAPHIFYY=false
 
 # Optional API mode:
 # PATCHWORK_USE_CLI_BACKENDS=false
@@ -309,6 +311,16 @@ def exec_plan(plan_file: Annotated[Path, typer.Argument(help="Path to plan JSON"
 
 def _get_repo_context() -> str:
     """Return lightweight repo context string for backends. Returns '' on failure."""
+    if get_settings().use_graphifyy:
+        try:
+            result = subprocess.run(["graphify"], capture_output=True, text=True)
+            if result.returncode == 0:
+                return f"=== Knowledge Graph Context ===\n{result.stdout}\n"
+            else:
+                error_console.print(f"[yellow]graphifyy failed: {result.stderr.strip()}. Falling back to git.[/yellow]")
+        except Exception as e:
+            error_console.print(f"[yellow]graphifyy execution error: {e}. Falling back to git.[/yellow]")
+
     try:
         result = subprocess.run(["git", "ls-files"], capture_output=True, text=True)
         if result.returncode == 0:

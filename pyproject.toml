@@ -19,6 +19,7 @@ dependencies = [
     "pydantic>=2.7.0",
     "pydantic-settings>=2.3.0",
     "python-dotenv>=1.0.0",
+    "graphifyy>=0.2.1",
 ]
 
 [project.scripts]

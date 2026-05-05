@@ -109,6 +109,13 @@ GOOGLE_API_KEY=...
 | api, database, sql, fastapi, auth, backend, server, endpoint | Codex |
 | *(everything else)* | Claude |
 
+## Optimizations
+
+Patchwork supports advanced token-saving optimizations natively:
+
+- **Caveman Mode** (`PATCHWORK_CAVEMAN_MODE=true`): Forces all backend agents to output raw code without conversational filler, drastically reducing output token costs.
+- **Graphifyy Context** (`PATCHWORK_USE_GRAPHIFYY=true`): Uses the [graphifyy](https://github.com/safishamsi/graphify) package to generate a structural Knowledge Graph of the codebase, vastly reducing the context window size before sending a prompt.
+
 ## Requirements
 
 - Python 3.11+

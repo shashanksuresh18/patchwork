@@ -81,6 +81,14 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("PATCHWORK_DEBUG_PROMPT", "debug_prompt"),
     )
+    caveman_mode: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("PATCHWORK_CAVEMAN_MODE", "caveman_mode"),
+    )
+    use_graphifyy: bool = Field(
+        default=False,
+        validation_alias=AliasChoices("PATCHWORK_USE_GRAPHIFYY", "use_graphifyy"),
+    )
 
 
 @lru_cache

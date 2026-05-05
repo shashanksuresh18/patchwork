@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 
+from patchwork.config import get_settings
 from patchwork.models import Task, Patch
 
 
@@ -29,7 +30,7 @@ class Backend(ABC):
 
     def _build_system_prompt(self) -> str:
         """Return the system prompt for patch generation. Shared by all backends."""
-        return """You are a coding assistant that generates unified diff patches.
+        base_prompt = """You are a coding assistant that generates unified diff patches.
 
 Rules:
 1. Output ONLY a valid unified diff. No explanations, no markdown fences, no commentary.
@@ -40,6 +41,11 @@ Rules:
 6. Do not include binary files.
 7. If you cannot generate a valid patch for this task, output exactly: CANNOT_GENERATE
 """
+        if get_settings().caveman_mode:
+            base_prompt += """
+8. CAVEMAN MODE ENABLED: Do not use pleasantries, greetings, or conversational filler. Output the absolute minimum text required. Do not explain your code. Output ONLY the raw patch.
+"""
+        return base_prompt
 
     def _extract_diff(self, raw_response: str) -> str:
         """Strip markdown fences from raw_response and return clean diff text."""
