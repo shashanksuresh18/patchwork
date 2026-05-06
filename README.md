@@ -1,7 +1,7 @@
 # Patchwork
 
 > Observability-first orchestrator for AI coding assistants - routes tasks across Claude, Codex,
-> and Gemini, traces every model call with Langfuse, and gates patches before they touch code.
+> and Gemini with AI-driven logic, traces every model call with Langfuse, and parallelizes execution with automatic retries.
 
 ## Quick start
 
@@ -28,12 +28,21 @@ patchwork exec .patchwork/plans/add-a-health-endpoint-20250101-120000.json
 
 ## How it works
 
-1. **Plan**: Claude decomposes a feature into 3-7 tasks and saves a JSON plan.
-2. **Route**: Each task is routed to the best backend based on keywords.
+1. **Plan**: Claude decomposes a feature into discrete tasks and intelligently assigns the best backend for each.
+2. **Route**: Tasks are parallelized across Claude, Codex, and Gemini based on the plan.
 3. **Generate**: The assigned backend produces a unified diff patch.
-4. **Review**: Claude inspects the patch and approves or rejects it.
+4. **Review**: Claude inspects the patch; if it fails or is rejected, it is automatically retried with the error feedback.
 5. **Apply**: Approved patches are validated with `git apply --check` then applied.
 6. **Observe**: Every model call is traced in Langfuse (optional).
+
+## Client demo diagrams
+
+Demo-ready architecture diagrams live in [`diagrams/`](diagrams/). Each diagram has:
+
+- `.svg` files for slides and client decks.
+- `.mmd` Mermaid source files for editing.
+- `.md` files with short presenter notes and embedded Mermaid diagrams.
+- [`diagrams-viewer.html`](diagrams/diagrams-viewer.html) for viewing all diagrams on one page.
 
 ## Local CLI mode
 
@@ -101,13 +110,15 @@ OPENAI_API_KEY=...
 GOOGLE_API_KEY=...
 ```
 
-## Routing rules
+## Routing Defaults
 
-| Keywords | Backend |
+By default, the AI Planner assigns backends based on these expertise areas (though it can override them for complex tasks):
+
+| Expertise | Backend |
 |---|---|
-| ui, component, react, css, tailwind, frontend, jsx, tsx | Gemini |
-| api, database, sql, fastapi, auth, backend, server, endpoint | Codex |
-| *(everything else)* | Claude |
+| UI, React, CSS, Tailwind, Frontend, JSX/TSX | Gemini |
+| API, Database, SQL, FastAPI, Auth, Backend, Server | Codex |
+| Architecture, Documentation, Refactoring, Logic | Claude |
 
 ## Optimizations
 

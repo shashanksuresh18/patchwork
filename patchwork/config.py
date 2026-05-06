@@ -90,6 +90,10 @@ class Settings(BaseSettings):
         default=False,
         validation_alias=AliasChoices("PATCHWORK_USE_GRAPHIFYY", "use_graphifyy"),
     )
+    max_retries: int = Field(
+        default=2,
+        validation_alias=AliasChoices("PATCHWORK_MAX_RETRIES", "max_retries"),
+    )
 
 
 @lru_cache

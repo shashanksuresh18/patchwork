@@ -1,0 +1,29 @@
+flowchart TD
+    classDef input fill:#e8f4ff,stroke:#2563eb,color:#0f172a
+    classDef runtime fill:#fff7ed,stroke:#ea580c,color:#0f172a
+    classDef file fill:#f8fafc,stroke:#64748b,color:#0f172a
+    classDef external fill:#f0fdf4,stroke:#16a34a,color:#0f172a
+    classDef guard fill:#fef2f2,stroke:#dc2626,color:#0f172a
+
+    ENV[.env settings]:::file --> CFG[patchwork config]:::runtime
+    CLI[patchwork CLI command]:::input --> CFG
+    CFG --> MODE{CLI mode or API mode}:::runtime
+
+    MODE -->|CLI mode| LOCAL[Local Claude / Codex / Gemini commands]:::external
+    MODE -->|API mode| SDK[Provider SDK clients]:::external
+
+    REPO[Git repo context]:::file --> PROMPT[Backend prompt]:::runtime
+    KG[Optional graphifyy knowledge graph]:::file --> PROMPT
+    CFG --> PROMPT
+    LOCAL --> PATCH[Generated unified diff]:::file
+    SDK --> PATCH
+    PROMPT --> LOCAL
+    PROMPT --> SDK
+
+    PATCH --> REVIEW[Review result]:::guard
+    REVIEW --> CHECK[git apply --check]:::guard
+    CHECK --> WORKTREE[Repository worktree]:::file
+    REVIEW --> PLAN[Plan JSON status update]:::file
+    CFG --> TRACE[Optional Langfuse trace]:::external
+    PATCH --> TRACE
+    REVIEW --> TRACE

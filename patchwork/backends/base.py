@@ -13,7 +13,7 @@ class Backend(ABC):
     name: str
 
     @abstractmethod
-    def generate_patch(self, task: Task, repo_context: str) -> Patch:
+    def generate_patch(self, task: Task, repo_context: str, error_feedback: str | None = None) -> Patch:
         """Generate a unified diff patch for the given task.
 
         Args:

@@ -2,6 +2,7 @@ import json
 import re
 import shutil
 import subprocess
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
@@ -121,20 +122,28 @@ def plan(feature: Annotated[str, typer.Argument(help="Feature description")]) ->
         error_console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
         raise typer.Exit(1)
     planner_system = """\
-You are a software architect. Your job is to decompose a feature request into a list of 3 to 7 discrete, atomic coding tasks.
+You are a software architect. Your job is to decompose a feature request into a list of discrete, atomic coding tasks.
 
 Rules:
 1. Each task must be independently implementable as a single code change.
-2. Order tasks by dependency - earlier tasks must not depend on later ones.
-3. Each description must be one sentence, action-oriented, and specific enough for a junior developer to implement without clarifying questions.
-4. Do not include testing tasks unless the feature request explicitly asks for tests.
-5. Do not include documentation tasks unless explicitly requested.
+2. Each description must be one sentence, action-oriented, and specific.
+3. For each task, assign the best backend:
+   - 'claude': architecture, refactoring, cross-cutting concerns, docs
+   - 'codex': API, database, auth, backend, server
+   - 'gemini': UI, React, CSS, frontend, components
+4. List which files will likely be affected by each task.
+5. Identify dependencies between tasks using their IDs.
 6. Output ONLY a JSON array. No preamble, no explanation, no markdown fences.
 
 Output format (exactly):
 [
-  {"id": "task-001", "description": "..."},
-  {"id": "task-002", "description": "..."}
+  {
+    "id": "task-001",
+    "description": "...",
+    "backend": "claude|codex|gemini",
+    "files_affected": ["file1.py", "file2.py"],
+    "depends_on": []
+  }
 ]
 """
     user_message = f"Feature: {feature}"
@@ -187,14 +196,19 @@ Instructions:
         raise typer.Exit(1)
     if (
         not isinstance(task_dicts, list)
-        or not 3 <= len(task_dicts) <= 7
         or not all(isinstance(d, dict) and "description" in d for d in task_dicts)
     ):
         console.print("[red]Planner returned invalid task list[/red]")
         raise typer.Exit(1)
 
     tasks = [
-        Task(id=f"task-{i+1:03d}", description=d["description"])
+        Task(
+            id=d.get("id", f"task-{i+1:03d}"),
+            description=d["description"],
+            backend=d.get("backend"),
+            files_affected=d.get("files_affected", []),
+            depends_on=d.get("depends_on", []),
+        )
         for i, d in enumerate(task_dicts)
     ]
     slug = slugify(feature)
@@ -227,6 +241,7 @@ def exec_plan(plan_file: Annotated[Path, typer.Argument(help="Path to plan JSON"
     if not settings.use_cli_backends and not settings.anthropic_api_key:
         error_console.print("[red]Error: ANTHROPIC_API_KEY not set[/red]")
         raise typer.Exit(1)
+    
     reviewer = PatchReviewer(
         api_key=settings.anthropic_api_key,
         model=settings.claude_model,
@@ -236,77 +251,90 @@ def exec_plan(plan_file: Annotated[Path, typer.Argument(help="Path to plan JSON"
     )
     repo_context = _get_repo_context()
 
-    for task in plan_obj.tasks:
+    def run_task(task: Task) -> None:
         console.print(f"\n[bold]Task {task.id}[/bold]: {task.description}")
         task.backend = route_task(task)
         console.print(f"  → routing to [cyan]{task.backend}[/cyan]")
-        key_map = {
-            "claude": settings.anthropic_api_key,
-            "codex": settings.openai_api_key,
-            "gemini": settings.google_api_key,
-        }
-        model_map = {
-            "claude": settings.claude_model,
-            "codex": settings.openai_model,
-            "gemini": settings.gemini_model,
-        }
-        cli_command_map = {
-            "claude": settings.claude_cli_command,
-            "codex": settings.codex_cli_command,
-            "gemini": settings.gemini_cli_command,
-        }
-        api_key = key_map.get(task.backend)
-        model = model_map.get(task.backend, "")
-        cli_command = cli_command_map.get(task.backend, "")
-        if not settings.use_cli_backends and not api_key:
-            task.status = TaskStatus.failed
-            task.rejection_reason = f"API key not set for {task.backend}"
-            continue
+        
         backend_cls = REGISTRY[task.backend]
         backend = backend_cls(
-            api_key=api_key,
-            model=model,
+            api_key={
+                "claude": settings.anthropic_api_key,
+                "codex": settings.openai_api_key,
+                "gemini": settings.google_api_key,
+            }.get(task.backend),
+            model={
+                "claude": settings.claude_model,
+                "codex": settings.openai_model,
+                "gemini": settings.gemini_model,
+            }.get(task.backend, ""),
             use_cli=settings.use_cli_backends,
-            cli_command=cli_command,
+            cli_command={
+                "claude": settings.claude_cli_command,
+                "codex": settings.codex_cli_command,
+                "gemini": settings.gemini_cli_command,
+            }.get(task.backend, ""),
             cli_timeout=settings.agent_cli_timeout,
         )
-        task.status = TaskStatus.running
-        try:
-            generated_patch = backend.generate_patch(task, repo_context)
-        except BackendError as e:
-            task.status = TaskStatus.failed
-            task.rejection_reason = str(e)
-            console.print(f"  [red]✗ Generation failed[/red]: {e}")
-            continue
-        except Exception as e:
-            task.status = TaskStatus.failed
-            task.rejection_reason = f"Unexpected error: {e}"
-            console.print(f"  [red]✗ Unexpected error[/red]: {e}")
-            raise
-        try:
-            review_result = reviewer.review(generated_patch, task)
-        except Exception as e:
-            task.status = TaskStatus.failed
-            task.rejection_reason = f"Review error: {e}"
-            console.print(f"  [red]✗ Review error[/red]: {e}")
-            continue
-        if review_result.decision == ReviewDecision.approve:
+
+        error_feedback = None
+        for attempt in range(settings.max_retries + 1):
+            if attempt > 0:
+                console.print(f"  [yellow]↺ Retry {attempt}/{settings.max_retries}[/yellow]")
+            
+            task.status = TaskStatus.running
             try:
-                patch_module.validate_patch(generated_patch)
-                patch_module.apply_patch(generated_patch)
-                task.status = TaskStatus.approved
-                console.print("  [green]✓ Applied[/green]")
-            except PatchError as e:
-                task.status = TaskStatus.rejected
-                task.rejection_reason = str(e)
-                console.print(f"  [red]✗ Patch error[/red]: {e}")
-        else:
-            task.status = TaskStatus.rejected
-            task.rejection_reason = review_result.reasoning
-            console.print(f"  [yellow]✗ Rejected[/yellow]: {review_result.reasoning[:80]}")
+                generated_patch = backend.generate_patch(task, repo_context, error_feedback)
+                review_result = reviewer.review(generated_patch, task)
+                
+                if review_result.decision == ReviewDecision.approve:
+                    patch_module.validate_patch(generated_patch)
+                    patch_module.apply_patch(generated_patch)
+                    task.status = TaskStatus.approved
+                    console.print("  [green]✓ Applied[/green]")
+                    return
+                else:
+                    error_feedback = f"Review rejected: {review_result.reasoning}"
+                    console.print(f"  [yellow]✗ Rejected[/yellow]: {review_result.reasoning[:80]}")
+            except (BackendError, PatchError, Exception) as e:
+                error_feedback = str(e)
+                console.print(f"  [red]✗ Attempt failed[/red]: {e}")
+        
+        task.status = TaskStatus.failed
+        task.rejection_reason = error_feedback
+
+    # Parallel scheduler with dependency tracking
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        while True:
+            # Find tasks that are pending and have all dependencies approved
+            ready_tasks = []
+            for t in plan_obj.tasks:
+                if t.status != TaskStatus.pending:
+                    continue
+                deps_ok = True
+                for dep_id in t.depends_on:
+                    dep_task = next((x for x in plan_obj.tasks if x.id == dep_id), None)
+                    if not dep_task or dep_task.status != TaskStatus.approved:
+                        deps_ok = False
+                        break
+                if deps_ok:
+                    ready_tasks.append(t)
+            
+            if not ready_tasks:
+                # Check if any tasks are still running or if we are stuck
+                if any(t.status == TaskStatus.running for t in plan_obj.tasks):
+                    import time
+                    time.sleep(1)
+                    continue
+                break
+
+            # Run ready tasks in parallel
+            futures = {executor.submit(run_task, t): t for t in ready_tasks}
+            for future in as_completed(futures):
+                future.result() # Wait for batch to finish (or handle results as they come)
 
     plan_file.write_text(plan_obj.model_dump_json(indent=2), encoding="utf-8")
-    _print_summary(plan_obj)
+    _print_summary(plan_obj)mary(plan_obj)
 
 
 def _get_repo_context() -> str:

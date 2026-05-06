@@ -29,14 +29,16 @@ class CodexBackend(Backend):
         self._client = OpenAI(api_key=api_key)
 
     @traced
-    def generate_patch(self, task: Task, repo_context: str) -> Patch:
+    def generate_patch(self, task: Task, repo_context: str, error_feedback: str | None = None) -> Patch:
         user_message = f"""Task: {task.description}
 
 Repository context:
 {repo_context if repo_context else "(no context provided)"}
-
-Generate a unified diff patch that implements this task.
 """
+        if error_feedback:
+            user_message += f"\n\nPREVIOUS ATTEMPT FAILED WITH ERROR:\n{error_feedback}\nPlease fix the patch and try again."
+        
+        user_message += "\n\nGenerate a unified diff patch that implements this task."
         if self._use_cli:
             prompt = f"{self._build_system_prompt()}\n\n{user_message}"
             try:

@@ -1,0 +1,57 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760" role="img" aria-labelledby="title desc">
+  <title id="title">Patchwork agent orchestration</title>
+  <desc id="desc">Patchwork routes tasks to Gemini, Codex, or Claude and sends patches through Claude review.</desc>
+  <defs>
+    <marker id="arrow" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto"><path d="M2 2 L10 6 L2 10 Z" fill="#64748b"/></marker>
+    <style>
+      .bg{fill:#f8fafc}.title{font:700 34px Inter,Segoe UI,sans-serif;fill:#0f172a}.note{font:500 17px Inter,Segoe UI,sans-serif;fill:#475569}
+      .box{rx:10;stroke-width:2}.center{fill:#fff7ed;stroke:#ea580c}.claude{fill:#f5f3ff;stroke:#7c3aed}.codex{fill:#ecfeff;stroke:#0891b2}.gemini{fill:#f0fdf4;stroke:#16a34a}.out{fill:#fff;stroke:#64748b}
+      .label{font:700 20px Inter,Segoe UI,sans-serif;fill:#0f172a}.small{font:600 14px Inter,Segoe UI,sans-serif;fill:#475569}.edge{fill:none;stroke:#64748b;stroke-width:2.5;marker-end:url(#arrow)}
+    </style>
+  </defs>
+  <rect class="bg" width="1400" height="760"/>
+  <text class="title" x="60" y="70">Agent Orchestration</text>
+  <text class="note" x="60" y="104">Patchwork uses the right assistant for the job, then keeps one consistent review gate.</text>
+
+  <rect class="box out" x="70" y="310" width="210" height="92"/>
+  <text class="label" x="112" y="348">Task from plan</text>
+  <text class="small" x="112" y="377">task-001, task-002...</text>
+
+  <rect class="box center" x="370" y="310" width="230" height="92"/>
+  <text class="label" x="415" y="348">Patchwork</text>
+  <text class="small" x="415" y="377">Orchestrates execution</text>
+
+  <path d="M730 286 L880 356 L730 426 L580 356 Z" fill="#fff7ed" stroke="#ea580c" stroke-width="2"/>
+  <text class="label" x="671" y="348">Keyword router</text>
+  <text class="small" x="656" y="378">classifies task type</text>
+
+  <rect class="box gemini" x="1010" y="160" width="260" height="90"/>
+  <text class="label" x="1085" y="197">Gemini</text>
+  <text class="small" x="1060" y="225">UI, React, CSS, frontend</text>
+
+  <rect class="box codex" x="1010" y="310" width="260" height="90"/>
+  <text class="label" x="1090" y="347">Codex</text>
+  <text class="small" x="1052" y="375">API, database, auth, server</text>
+
+  <rect class="box claude" x="1010" y="460" width="260" height="90"/>
+  <text class="label" x="1084" y="497">Claude</text>
+  <text class="small" x="1053" y="525">Planning, fallback, review</text>
+
+  <rect class="box out" x="620" y="600" width="240" height="90"/>
+  <text class="label" x="664" y="637">Patch candidate</text>
+  <text class="small" x="681" y="665">Unified diff output</text>
+
+  <rect class="box claude" x="320" y="600" width="220" height="90"/>
+  <text class="label" x="366" y="637">Claude review</text>
+  <text class="small" x="370" y="665">Approve or reject</text>
+
+  <path class="edge" d="M280 356 H370"/>
+  <path class="edge" d="M600 356 H580"/>
+  <path class="edge" d="M880 356 C930 240 955 205 1010 205"/>
+  <path class="edge" d="M880 356 H1010"/>
+  <path class="edge" d="M880 356 C930 470 955 505 1010 505"/>
+  <path class="edge" d="M1140 250 C1140 610 945 645 860 645"/>
+  <path class="edge" d="M1010 355 C940 390 910 600 860 635"/>
+  <path class="edge" d="M1010 505 C950 560 920 625 860 645"/>
+  <path class="edge" d="M620 645 H540"/>
+</svg>

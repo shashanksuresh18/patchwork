@@ -1,0 +1,21 @@
+flowchart LR
+    classDef center fill:#fff7ed,stroke:#ea580c,color:#0f172a
+    classDef claude fill:#f5f3ff,stroke:#7c3aed,color:#0f172a
+    classDef codex fill:#ecfeff,stroke:#0891b2,color:#0f172a
+    classDef gemini fill:#f0fdf4,stroke:#16a34a,color:#0f172a
+    classDef output fill:#f8fafc,stroke:#64748b,color:#0f172a
+
+    T[Task from plan]:::output --> O[Patchwork orchestrator]:::center
+    O --> K{Keyword router}:::center
+
+    K -->|ui, component, react, css, tailwind| G[Gemini]:::gemini
+    K -->|api, database, fastapi, auth, endpoint| C[Codex]:::codex
+    K -->|fallback and planning| A[Claude]:::claude
+
+    A --> P[Patch candidate]:::output
+    C --> P
+    G --> P
+
+    P --> Q[Claude reviewer]:::claude
+    Q -->|approve| OK[Validated patch]:::output
+    Q -->|reject| NO[Reason saved on task]:::output

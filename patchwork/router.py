@@ -19,6 +19,9 @@ BACKEND_KEYWORDS: frozenset[str] = frozenset({
 
 def route_task(task: Task) -> str:
     """Return backend name: 'gemini', 'codex', or 'claude'."""
+    if task.backend:
+        return task.backend
+
     words = set(re.split(r"[\s,./;:!?()\[\]{}\"']+", task.description.lower()))
     words.discard("")
     if words & FRONTEND_KEYWORDS:

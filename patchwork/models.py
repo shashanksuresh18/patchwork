@@ -19,6 +19,8 @@ class Task(BaseModel):
     id: str
     description: str
     backend: str | None = None
+    files_affected: list[str] = Field(default_factory=list)
+    depends_on: list[str] = Field(default_factory=list)
     status: TaskStatus = TaskStatus.pending
     rejection_reason: str | None = None
 
