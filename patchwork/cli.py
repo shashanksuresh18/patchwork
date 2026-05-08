@@ -334,7 +334,7 @@ def exec_plan(plan_file: Annotated[Path, typer.Argument(help="Path to plan JSON"
                 future.result() # Wait for batch to finish (or handle results as they come)
 
     plan_file.write_text(plan_obj.model_dump_json(indent=2), encoding="utf-8")
-    _print_summary(plan_obj)mary(plan_obj)
+    _print_summary(plan_obj)
 
 
 def _get_repo_context() -> str:
