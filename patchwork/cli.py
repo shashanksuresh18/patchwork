@@ -251,54 +251,68 @@ def exec_plan(plan_file: Annotated[Path, typer.Argument(help="Path to plan JSON"
     )
     repo_context = _get_repo_context()
 
-    def run_task(task: Task) -> None:
-        console.print(f"\n[bold]Task {task.id}[/bold]: {task.description}")
-        task.backend = route_task(task)
-        console.print(f"  → routing to [cyan]{task.backend}[/cyan]")
-        
-        backend_cls = REGISTRY[task.backend]
-        backend = backend_cls(
+    def _make_backend(backend_name: str):
+        """Create a backend instance by name."""
+        backend_cls = REGISTRY[backend_name]
+        return backend_cls(
             api_key={
                 "claude": settings.anthropic_api_key,
                 "codex": settings.openai_api_key,
                 "gemini": settings.google_api_key,
-            }.get(task.backend),
+            }.get(backend_name),
             model={
                 "claude": settings.claude_model,
                 "codex": settings.openai_model,
                 "gemini": settings.gemini_model,
-            }.get(task.backend, ""),
+            }.get(backend_name, ""),
             use_cli=settings.use_cli_backends,
             cli_command={
                 "claude": settings.claude_cli_command,
                 "codex": settings.codex_cli_command,
                 "gemini": settings.gemini_cli_command,
-            }.get(task.backend, ""),
+            }.get(backend_name, ""),
             cli_timeout=settings.agent_cli_timeout,
         )
 
-        error_feedback = None
-        for attempt in range(settings.max_retries + 1):
-            if attempt > 0:
-                console.print(f"  [yellow]↺ Retry {attempt}/{settings.max_retries}[/yellow]")
-            
-            task.status = TaskStatus.running
-            try:
-                generated_patch = backend.generate_patch(task, repo_context, error_feedback)
-                review_result = reviewer.review(generated_patch, task)
+    def run_task(task: Task) -> None:
+        console.print(f"\n[bold]Task {task.id}[/bold]: {task.description}")
+        primary_backend = route_task(task)
+        
+        # Build fallback chain: primary → others
+        all_backends = ["claude", "gemini", "codex"]
+        fallback_chain = [primary_backend] + [b for b in all_backends if b != primary_backend]
+
+        for backend_name in fallback_chain:
+            task.backend = backend_name
+            console.print(f"  → routing to [cyan]{backend_name}[/cyan]")
+            backend = _make_backend(backend_name)
+
+            error_feedback = None
+            for attempt in range(settings.max_retries + 1):
+                if attempt > 0:
+                    console.print(f"  [yellow]↺ Retry {attempt}/{settings.max_retries}[/yellow]")
                 
-                if review_result.decision == ReviewDecision.approve:
-                    patch_module.validate_patch(generated_patch)
-                    patch_module.apply_patch(generated_patch)
-                    task.status = TaskStatus.approved
-                    console.print("  [green]✓ Applied[/green]")
-                    return
-                else:
-                    error_feedback = f"Review rejected: {review_result.reasoning}"
-                    console.print(f"  [yellow]✗ Rejected[/yellow]: {review_result.reasoning[:80]}")
-            except (BackendError, PatchError, Exception) as e:
-                error_feedback = str(e)
-                console.print(f"  [red]✗ Attempt failed[/red]: {e}")
+                task.status = TaskStatus.running
+                try:
+                    generated_patch = backend.generate_patch(task, repo_context, error_feedback)
+                    review_result = reviewer.review(generated_patch, task)
+                    
+                    if review_result.decision == ReviewDecision.approve:
+                        patch_module.validate_patch(generated_patch)
+                        patch_module.apply_patch(generated_patch)
+                        task.status = TaskStatus.approved
+                        console.print("  [green]✓ Applied[/green]")
+                        return
+                    else:
+                        error_feedback = f"Review rejected: {review_result.reasoning}"
+                        console.print(f"  [yellow]✗ Rejected[/yellow]: {review_result.reasoning[:80]}")
+                except (BackendError, PatchError, Exception) as e:
+                    error_feedback = str(e)
+                    console.print(f"  [red]✗ Attempt failed[/red]: {e}")
+            
+            # All retries exhausted for this backend — try fallback
+            if backend_name != fallback_chain[-1]:
+                console.print(f"  [yellow]⤳ Falling back from {backend_name}...[/yellow]")
         
         task.status = TaskStatus.failed
         task.rejection_reason = error_feedback

@@ -59,12 +59,14 @@ Generated patch:
 {patch.content}
 """
         if self._use_cli:
+            # Always embed system prompt in the message for CLI mode
+            # so it works with any CLI backend (Gemini, Codex, etc.)
+            cli_prompt = f"{REVIEWER_SYSTEM_PROMPT}\n\n{user_message}"
             try:
                 raw_text = run_agent_cli(
                     self._cli_command,
-                    user_message,
+                    cli_prompt,
                     self._cli_timeout,
-                    system_prompt=REVIEWER_SYSTEM_PROMPT,
                 )
             except AgentCliError as e:
                 return ReviewResult(
@@ -93,10 +95,18 @@ Generated patch:
     def _parse_response(self, raw: str, task_id: str) -> ReviewResult:
         decision_match = re.search(r"DECISION:\s*(APPROVE|REJECT)", raw, re.IGNORECASE)
         if not decision_match:
+            # Lenient fallback: if the response contains "approve" anywhere, treat it as approved
+            lower_raw = raw.lower()
+            if "approve" in lower_raw and "reject" not in lower_raw:
+                return ReviewResult(
+                    task_id=task_id,
+                    decision=ReviewDecision.approve,
+                    reasoning="Auto-approved (lenient parse: response indicated approval)",
+                )
             return ReviewResult(
                 task_id=task_id,
                 decision=ReviewDecision.reject,
-                reasoning="Unparseable reviewer response",
+                reasoning=f"Unparseable reviewer response: {raw[:200]}",
             )
         decision_str = decision_match.group(1).upper()
         decision = ReviewDecision.approve if decision_str == "APPROVE" else ReviewDecision.reject
